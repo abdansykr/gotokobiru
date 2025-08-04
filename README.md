@@ -49,7 +49,7 @@ Pastikan **Docker** dan **Docker Compose** sudah terpasang di sistem Anda.
 
 ### 1. Clone Repositori
 ```bash
-git clone [https://github.com/URL_REPO_ANDA/tokobiru.git](https://github.com/URL_REPO_ANDA/tokobiru.git)
+git clone https://github.com/abdansykr/gotokobiru
 cd tokobiru
 ```
 
