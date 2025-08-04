@@ -1,0 +1,28 @@
+services:
+  mongo-db:
+    image: mongo:latest
+    container_name: tokobiru-mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  go-app:
+    container_name: tokobiru-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mongo-db
+    env_file:
+      - .env
+
+volumes:
+  mongo-data:

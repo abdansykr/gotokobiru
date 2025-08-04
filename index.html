@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toko Biru (Vue.js) - E-commerce</title>
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .prose h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        .prose ul { list-style-position: inside; }
+        .prose li { margin-left: 1rem; }
+        .prose p { margin-bottom: 1rem; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="app">
+        <!-- Header / Navbar -->
+        <header class="bg-white shadow-md sticky top-0 z-50">
+            <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex-shrink-0">
+                        <a href="#" @click.prevent="navigateTo('products-page')" class="text-2xl font-bold text-blue-600">Toko Biru (Vue)</a>
+                    </div>
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-4">
+                            <a href="#" @click.prevent="navigateTo('products-page')" class="text-gray-700 hover:bg-blue-500 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Produk</a>
+                            <a href="#" v-if="isLoggedIn && userRole === 'customer'" @click.prevent="navigateTo('cart-page')" class="text-gray-700 hover:bg-blue-500 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Keranjang</a>
+                            <a href="#" v-if="isLoggedIn && userRole === 'customer'" @click.prevent="navigateTo('order-history-page')" class="text-gray-700 hover:bg-blue-500 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Riwayat Pesanan</a>
+                            <a href="#" v-if="isLoggedIn && userRole === 'admin'" @click.prevent="navigateTo('admin-dashboard')" class="text-gray-700 hover:bg-green-500 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Admin Dashboard</a>
+                            <a href="#" v-if="!isLoggedIn" @click.prevent="navigateTo('login-page')" class="bg-blue-500 text-white px-3 py-2 rounded-md text-sm font-medium">Login</a>
+                            <a href="#" v-if="isLoggedIn" @click.prevent="logout" class="bg-red-500 text-white px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                        </div>
+                    </div>
+                     <div class="md:hidden">
+                        <button @click="mobileMenuOpen = !mobileMenuOpen" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none">
+                            <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </nav>
+            <!-- Mobile menu -->
+            <div v-if="mobileMenuOpen" class="md:hidden">
+                <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                     <a href="#" @click.prevent="navigateTo('products-page')" class="text-gray-700 hover:bg-blue-500 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Produk</a>
+                     <a href="#" v-if="isLoggedIn && userRole === 'customer'" @click.prevent="navigateTo('cart-page')" class="text-gray-700 hover:bg-blue-500 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Keranjang</a>
+                     <a href="#" v-if="isLoggedIn && userRole === 'customer'" @click.prevent="navigateTo('order-history-page')" class="text-gray-700 hover:bg-blue-500 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Riwayat Pesanan</a>
+                     <a href="#" v-if="isLoggedIn && userRole === 'admin'" @click.prevent="navigateTo('admin-dashboard')" class="text-gray-700 hover:bg-green-500 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Admin Dashboard</a>
+                     <a href="#" v-if="!isLoggedIn" @click.prevent="navigateTo('login-page')" class="bg-blue-500 text-white block px-3 py-2 rounded-md text-base font-medium">Login</a>
+                     <a href="#" v-if="isLoggedIn" @click.prevent="logout" class="bg-red-500 text-white block px-3 py-2 rounded-md text-base font-medium">Logout</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+            <component 
+                :is="currentPageComponent" 
+                :product-id="selectedProductId"
+                :order-id="selectedOrderId"
+                @navigate="navigateTo" 
+                @view-product="viewProductDetail"
+                @view-order="viewOrderDetail"
+                @login-success="onLoginSuccess" 
+                @show-notification="showNotification">
+            </component>
+        </main>
+        
+        <notification-modal v-if="notification.visible" :title="notification.title" :message="notification.message" :is-success="notification.isSuccess" @close="notification.visible = false"></notification-modal>
+        <chatbot-widget v-if="isLoggedIn"></chatbot-widget>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8080/api/v1';
+
+        // =======================================================
+        // Komponen Notifikasi
+        // =======================================================
+        const NotificationModal = {
+            props: ['title', 'message', 'isSuccess'],
+            template: `
+                <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+                    <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                        <div class="mt-3 text-center">
+                            <h3 class="text-lg leading-6 font-medium" :class="isSuccess ? 'text-green-600' : 'text-red-600'">{{ title }}</h3>
+                            <div class="mt-2 px-7 py-3">
+                                <p class="text-sm text-gray-500">{{ message }}</p>
+                            </div>
+                            <div class="items-center px-4 py-3">
+                                <button @click="$emit('close')" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-700 focus:outline-none">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Halaman Login
+        // =======================================================
+        const LoginPage = {
+            emits: ['navigate', 'login-success', 'show-notification'],
+            data() { return { email: '', password: '' }; },
+            methods: {
+                async handleLogin() {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: this.email, password: this.password }) });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Login gagal.');
+                        this.$emit('login-success', data);
+                    } catch (error) { this.$emit('show-notification', { title: 'Login Gagal', message: error.message, isSuccess: false }); }
+                }
+            },
+            template: `
+                <div class="flex items-center justify-center">
+                    <div class="max-w-md w-full bg-white p-8 rounded-lg shadow-lg">
+                        <h2 class="text-2xl font-bold text-center mb-6">Login ke Akun Anda</h2>
+                        <form @submit.prevent="handleLogin">
+                            <div class="mb-4"><label for="login-email" class="block text-sm font-medium text-gray-700">Email</label><input v-model="email" type="email" id="login-email" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required></div>
+                            <div class="mb-6"><label for="login-password" class="block text-sm font-medium text-gray-700">Password</label><input v-model="password" type="password" id="login-password" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required></div>
+                            <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Login</button>
+                        </form>
+                        <p class="text-center mt-4 text-sm">Belum punya akun? <a href="#" @click.prevent="$emit('navigate', 'register-page')" class="font-medium text-blue-600 hover:text-blue-500">Daftar di sini</a></p>
+                    </div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Halaman Register
+        // =======================================================
+        const RegisterPage = {
+            emits: ['navigate', 'show-notification'],
+            data() { return { name: '', email: '', password: '' }; },
+            methods: {
+                async handleRegister() {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: this.name, email: this.email, password: this.password }) });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Registrasi gagal.');
+                        this.$emit('show-notification', { title: 'Registrasi Berhasil', message: 'Akun Anda berhasil dibuat. Silakan login.'});
+                        this.$emit('navigate', 'login-page');
+                    } catch (error) { this.$emit('show-notification', { title: 'Registrasi Gagal', message: error.message, isSuccess: false }); }
+                }
+            },
+            template: `
+                <div class="flex items-center justify-center">
+                    <div class="max-w-md w-full bg-white p-8 rounded-lg shadow-lg">
+                        <h2 class="text-2xl font-bold text-center mb-6">Buat Akun Baru</h2>
+                        <form @submit.prevent="handleRegister">
+                             <div class="mb-4"><label for="register-name" class="block text-sm font-medium text-gray-700">Nama Lengkap</label><input v-model="name" type="text" id="register-name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required></div>
+                            <div class="mb-4"><label for="register-email" class="block text-sm font-medium text-gray-700">Email</label><input v-model="email" type="email" id="register-email" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required></div>
+                            <div class="mb-6"><label for="register-password" class="block text-sm font-medium text-gray-700">Password</label><input v-model="password" type="password" id="register-password" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required></div>
+                            <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Daftar</button>
+                        </form>
+                         <p class="text-center mt-4 text-sm">Sudah punya akun? <a href="#" @click.prevent="$emit('navigate', 'login-page')" class="font-medium text-blue-600 hover:text-blue-500">Login</a></p>
+                    </div>
+                </div>
+            `
+        };
+        
+        // =======================================================
+        // Komponen Halaman Produk
+        // =======================================================
+        const ProductsPage = {
+            emits: ['show-notification', 'navigate', 'view-product'],
+            data() { return { products: [], searchTerm: '' }; },
+            computed: {
+                filteredProducts() {
+                    if (!this.searchTerm) { return this.products; }
+                    return this.products.filter(p => p.name.toLowerCase().includes(this.searchTerm.toLowerCase()));
+                }
+            },
+            methods: {
+                async addToCart(productId) {
+                    const token = localStorage.getItem('jwtToken');
+                    if (!token) {
+                        this.$emit('show-notification', { title: 'Gagal', message: 'Silakan login terlebih dahulu.', isSuccess: false });
+                        this.$emit('navigate', 'login-page');
+                        return;
+                    }
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/cart`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ productId, quantity: 1 }) });
+                        if (!response.ok) throw new Error((await response.json()).error || 'Gagal menambah ke keranjang.');
+                        this.$emit('show-notification', { title: 'Sukses', message: 'Produk berhasil ditambahkan ke keranjang!' });
+                    } catch(error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                }
+            },
+            async created() {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/products`);
+                    if (!response.ok) throw new Error('Gagal memuat produk.');
+                    this.products = (await response.json()).data;
+                } catch (error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+            },
+            template: `
+                <div>
+                    <div class="flex justify-between items-center mb-6">
+                        <h1 class="text-3xl font-bold">Katalog Produk</h1>
+                        <input v-model="searchTerm" type="text" placeholder="Cari produk..." class="w-full md:w-1/3 px-4 py-2 border rounded-md">
+                    </div>
+                    <div v-if="filteredProducts.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        <div v-for="product in filteredProducts" :key="product.id" @click="$emit('view-product', product.id)" class="cursor-pointer bg-white rounded-lg shadow-md overflow-hidden transform hover:scale-105 transition-transform duration-300">
+                            <img :src="product.image_url" :alt="product.name" class="w-full h-48 object-cover">
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold">{{ product.name }}</h3>
+                                <p class="text-gray-600 text-sm mt-1">{{ product.category }}</p>
+                                <p class="text-gray-800 font-bold mt-2">Rp {{ product.price.toLocaleString('id-ID') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="text-center py-10 text-gray-500"><p>Produk tidak ditemukan.</p></div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Halaman Detail Produk
+        // =======================================================
+        const ProductDetailPage = {
+            props: ['productId'],
+            emits: ['show-notification', 'navigate'],
+            data() { return { product: null, isLoading: true }; },
+            computed: {
+                formattedDescription() {
+                    if (!this.product || !this.product.description) return '';
+                    return this.product.description.replace(/### (.*)/g, '<h3 class="text-xl font-semibold mt-6 mb-2">$1</h3>').replace(/\n- (.*)/g, '<li class="ml-4 list-disc">$1</li>').replace(/\n/g, '<br />');
+                }
+            },
+            methods: {
+                async fetchProduct() {
+                    this.isLoading = true;
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/products/${this.productId}`);
+                        if (!response.ok) throw new Error('Produk tidak ditemukan.');
+                        this.product = await response.json();
+                    } catch (error) {
+                        this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false });
+                        this.$emit('navigate', 'products-page');
+                    } finally { this.isLoading = false; }
+                },
+                async addToCart() {
+                    const token = localStorage.getItem('jwtToken');
+                    if (!token) {
+                        this.$emit('show-notification', { title: 'Gagal', message: 'Silakan login terlebih dahulu.', isSuccess: false });
+                        this.$emit('navigate', 'login-page');
+                        return;
+                    }
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/cart`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ productId: this.product.id, quantity: 1 }) });
+                        if (!response.ok) throw new Error((await response.json()).error || 'Gagal menambah ke keranjang.');
+                        this.$emit('show-notification', { title: 'Sukses', message: 'Produk berhasil ditambahkan ke keranjang!' });
+                    } catch(error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                }
+            },
+            created() { this.fetchProduct(); },
+            template: `
+                <div>
+                    <div v-if="isLoading" class="text-center p-10"><p class="animate-pulse">Memuat detail produk...</p></div>
+                    <div v-if="!isLoading && product">
+                        <button @click="$emit('navigate', 'products-page')" class="mb-6 text-blue-600 hover:underline">&lt; Kembali ke Katalog</button>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+                            <div><img :src="product.image_url" :alt="product.name" class="w-full rounded-lg shadow-lg"></div>
+                            <div>
+                                <h1 class="text-4xl font-bold">{{ product.name }}</h1>
+                                <p class="text-lg text-gray-500 mt-2">{{ product.category }}</p>
+                                <p class="text-3xl font-bold text-blue-600 my-4">Rp {{ product.price.toLocaleString('id-ID') }}</p>
+                                <p class="text-md text-gray-600">Stok Tersedia: {{ product.stock }}</p>
+                                <button @click="addToCart" class="mt-6 w-full bg-blue-500 text-white py-3 rounded-lg text-lg font-semibold hover:bg-blue-600">Tambah ke Keranjang</button>
+                                <div class="mt-8 prose max-w-none" v-html="formattedDescription"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Halaman Keranjang
+        // =======================================================
+        const CartPage = {
+             emits: ['show-notification', 'navigate'],
+             data() { return { cart: { items: [] }, isLoading: true }; },
+             computed: {
+                cartTotal() {
+                    if (!this.cart.items) return 0;
+                    return this.cart.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+                }
+             },
+             methods: {
+                async loadCart() {
+                    this.isLoading = true;
+                    const token = localStorage.getItem('jwtToken');
+                    if (!token) { this.isLoading = false; return; }
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/cart`, { headers: { 'Authorization': `Bearer ${token}` } });
+                        const data = await response.json();
+                        if (response.ok) { this.cart = data; } 
+                        else if (response.status === 404 || !data.items) { this.cart = { items: [] }; } 
+                        else { throw new Error(data.error || 'Gagal memuat keranjang'); }
+                    } catch (error) {
+                        this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false });
+                        this.cart = { items: [] };
+                    } finally { this.isLoading = false; }
+                },
+                async updateQuantity(item, delta) {
+                    const newQuantity = item.quantity + delta;
+                    const token = localStorage.getItem('jwtToken');
+                    if (newQuantity <= 0) { await this.removeFromCart(item.productId); return; }
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/cart`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ productId: item.productId, quantity: newQuantity }) });
+                        if (!response.ok) throw new Error((await response.json()).error || 'Gagal memperbarui kuantitas.');
+                        item.quantity = newQuantity;
+                    } catch(error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                },
+                async removeFromCart(productId) {
+                    const token = localStorage.getItem('jwtToken');
+                    try {
+                         const response = await fetch(`${API_BASE_URL}/cart/${productId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!response.ok) throw new Error('Gagal menghapus item.');
+                        this.$emit('show-notification', { title: 'Sukses', message: 'Item berhasil dihapus dari keranjang.' });
+                        this.loadCart();
+                    } catch(error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                }
+             },
+             created() { this.loadCart(); },
+             template: `
+                <div>
+                     <h1 class="text-3xl font-bold mb-6">Keranjang Belanja Anda</h1>
+                     <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <div v-if="isLoading" class="text-center"><p>Memuat keranjang...</p></div>
+                        <div v-else-if="!cart.items || cart.items.length === 0"><p class="text-center text-gray-500">Keranjang Anda kosong.</p></div>
+                        <div v-else>
+                            <div v-for="item in cart.items" :key="item.productId" class="flex items-center justify-between py-4 border-b">
+                                <div class="flex items-center space-x-4"><img :src="item.image_url" :alt="item.name" class="w-16 h-16 object-cover rounded"><div><p class="font-semibold">{{ item.name }}</p><p class="text-sm text-gray-600">Rp {{ item.price.toLocaleString('id-ID') }}</p></div></div>
+                                <div class="flex items-center space-x-4"><div class="flex items-center border rounded"><button @click="updateQuantity(item, -1)" class="px-3 py-1 text-lg font-bold">-</button><span class="px-4">{{ item.quantity }}</span><button @click="updateQuantity(item, 1)" class="px-3 py-1 text-lg font-bold">+</button></div><button @click="removeFromCart(item.productId)" class="text-red-500 hover:text-red-700 text-sm">Hapus</button></div>
+                            </div>
+                             <div class="mt-6 text-right"><p class="text-xl font-bold">Total: Rp {{ cartTotal.toLocaleString('id-ID') }}</p><button @click="$emit('navigate', 'payment-page')" class="mt-4 bg-green-500 text-white py-2 px-6 rounded-md hover:bg-green-600">Lanjut ke Pembayaran</button></div>
+                        </div>
+                     </div>
+                </div>
+             `
+        };
+        
+        // =======================================================
+        // Komponen Halaman Pembayaran
+        // =======================================================
+        const PaymentPage = {
+            emits: ['show-notification', 'navigate'],
+            data() { return { isLoading: false, paymentMethod: 'bank_transfer' }; },
+            methods: {
+                async handlePayment() {
+                    this.isLoading = true;
+                    const token = localStorage.getItem('jwtToken');
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/orders/checkout`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!response.ok) throw new Error('Gagal checkout.');
+                        this.$emit('show-notification', { title: 'Pembayaran Berhasil!', message: 'Pesanan Anda sedang diproses. Anda akan diarahkan ke riwayat pesanan.' });
+                        this.$emit('navigate', 'order-history-page');
+                    } catch(error) {
+                        this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false });
+                    } finally {
+                        this.isLoading = false;
+                    }
+                }
+            },
+            template: `
+                <div class="max-w-2xl mx-auto">
+                    <button @click="$emit('navigate', 'cart-page')" class="mb-6 text-blue-600 hover:underline">&lt; Kembali ke Keranjang</button>
+                    <div class="bg-white p-8 rounded-lg shadow-lg">
+                        <h1 class="text-2xl font-bold mb-6 text-center">Konfirmasi Pembayaran</h1>
+                        <div class="space-y-4">
+                            <h2 class="text-lg font-semibold">Pilih Metode Pembayaran:</h2>
+                            <div class="p-4 border rounded-lg" :class="{ 'ring-2 ring-blue-500': paymentMethod === 'bank_transfer' }">
+                                <label class="flex items-center"><input type="radio" v-model="paymentMethod" value="bank_transfer" class="mr-3">Transfer Bank (Virtual Account)</label>
+                            </div>
+                            <div class="p-4 border rounded-lg" :class="{ 'ring-2 ring-blue-500': paymentMethod === 'qris' }">
+                                <label class="flex items-center"><input type="radio" v-model="paymentMethod" value="qris" class="mr-3">QRIS</label>
+                            </div>
+                            <div class="p-4 border rounded-lg" :class="{ 'ring-2 ring-blue-500': paymentMethod === 'credit_card' }">
+                                <label class="flex items-center"><input type="radio" v-model="paymentMethod" value="credit_card" class="mr-3">Kartu Kredit/Debit</label>
+                            </div>
+                        </div>
+                        <div class="mt-8 border-t pt-6">
+                            <button @click="handlePayment" :disabled="isLoading" class="w-full bg-green-500 text-white py-3 rounded-lg text-lg font-semibold hover:bg-green-600 disabled:bg-gray-400">
+                                {{ isLoading ? 'Memproses...' : 'Bayar Sekarang' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Halaman Riwayat Pesanan
+        // =======================================================
+        const OrderHistoryPage = {
+            emits: ['show-notification', 'view-order'],
+            data() { return { orders: [], isLoading: true }; },
+            methods: {
+                formatDate(dateString) { return new Date(dateString).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }); },
+                getStatusClass(status) {
+                    switch(status) {
+                        case 'baru': return 'bg-blue-100 text-blue-800';
+                        case 'diproses': return 'bg-yellow-100 text-yellow-800';
+                        case 'dikirim': return 'bg-green-100 text-green-800';
+                        default: return 'bg-gray-100 text-gray-800';
+                    }
+                }
+            },
+            async created() {
+                const token = localStorage.getItem('jwtToken');
+                try {
+                    const response = await fetch(`${API_BASE_URL}/orders`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!response.ok) throw new Error('Gagal memuat riwayat pesanan.');
+                    this.orders = await response.json();
+                } catch(error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); } 
+                finally { this.isLoading = false; }
+            },
+            template: `
+                <div>
+                    <h1 class="text-3xl font-bold mb-6">Riwayat Pesanan</h1>
+                    <div class="bg-white shadow-md rounded-lg overflow-x-auto">
+                        <div v-if="isLoading" class="p-6 text-center">Memuat data...</div>
+                        <div v-else-if="orders.length === 0" class="p-6 text-center text-gray-500">Anda belum memiliki riwayat pesanan.</div>
+                        <table v-else class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order ID</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th></tr></thead>
+                            <tbody class="bg-white divide-y divide-gray-200"><tr v-for="order in orders" :key="order.id"><td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{{ order.orderId }}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ formatDate(order.created_at) }}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Rp {{ order.total.toLocaleString('id-ID') }}</td><td class="px-6 py-4 whitespace-nowrap"><span :class="getStatusClass(order.status)" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full">{{ order.status }}</span></td><td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button @click="$emit('view-order', order.id)" class="text-indigo-600 hover:text-indigo-900">Lihat Detail</button></td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            `
+        };
+        
+        // =======================================================
+        // Komponen Halaman Detail Pesanan
+        // =======================================================
+        const OrderDetailPage = {
+            props: ['orderId'],
+            emits: ['show-notification', 'navigate'],
+            data() { return { order: null, isLoading: true }; },
+            methods: {
+                formatDate(dateString) { return new Date(dateString).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }); },
+                getStatusClass(status) {
+                    switch(status) {
+                        case 'baru': return 'bg-blue-100 text-blue-800';
+                        case 'diproses': return 'bg-yellow-100 text-yellow-800';
+                        case 'dikirim': return 'bg-green-100 text-green-800';
+                        default: return 'bg-gray-100 text-gray-800';
+                    }
+                }
+            },
+            async created() {
+                const token = localStorage.getItem('jwtToken');
+                try {
+                    const response = await fetch(`${API_BASE_URL}/orders/${this.orderId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!response.ok) throw new Error('Gagal memuat detail pesanan.');
+                    this.order = await response.json();
+                } catch(error) {
+                    this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false });
+                    this.$emit('navigate', 'order-history-page');
+                } finally { this.isLoading = false; }
+            },
+            template: `
+                <div>
+                     <div v-if="isLoading" class="text-center"><p>Memuat detail pesanan...</p></div>
+                     <div v-if="order" class="bg-white p-8 rounded-lg shadow-lg">
+                        <button @click="$emit('navigate', 'order-history-page')" class="mb-6 text-blue-600 hover:underline">&lt; Kembali ke Riwayat</button>
+                        <div class="flex justify-between items-start">
+                            <div><h1 class="text-2xl font-bold">Detail Pesanan</h1><p class="text-sm font-mono text-gray-500">{{ order.orderId }}</p><p class="text-sm text-gray-500">{{ formatDate(order.created_at) }}</p></div>
+                            <div class="text-right"><p class="text-sm">Status:</p><span :class="getStatusClass(order.status)" class="px-3 py-1 text-sm leading-5 font-semibold rounded-full">{{ order.status }}</span></div>
+                        </div>
+                        <div class="mt-8 border-t pt-6">
+                            <h2 class="text-lg font-semibold mb-4">Ringkasan Barang</h2>
+                            <div v-for="item in order.items" :key="item.productId" class="flex justify-between items-center py-2 border-b"><span>{{ item.quantity }}x {{ item.name }}</span><span>Rp {{ (item.price * item.quantity).toLocaleString('id-ID') }}</span></div>
+                            <div class="mt-4 flex justify-end"><div class="w-full md:w-1/3"><div class="flex justify-between font-bold text-lg"><span>Total</span><span>Rp {{ order.total.toLocaleString('id-ID') }}</span></div></div></div>
+                        </div>
+                     </div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Admin Dashboard
+        // =======================================================
+        const AdminDashboard = {
+            emits: ['show-notification'],
+            data() { return { activeTab: 'products', products: [], showModal: false, isEditMode: false, currentProduct: { id: null, name: '', description: '', price: 0, stock: 0, category: '', image_url: '' }, report: null, isReportLoading: true, }; },
+            watch: { activeTab(newTab) { if (newTab === 'reports' && !this.report) { this.fetchSalesReport(); } } },
+            methods: {
+                async fetchSalesReport() {
+                    this.isReportLoading = true;
+                    const token = localStorage.getItem('jwtToken');
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/admin/sales-report`, { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!response.ok) throw new Error('Gagal memuat laporan penjualan.');
+                        this.report = await response.json();
+                    } catch (error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); } 
+                    finally { this.isReportLoading = false; }
+                },
+                async fetchProducts() {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/products`);
+                        if (!response.ok) throw new Error('Gagal memuat produk.');
+                        this.products = (await response.json()).data;
+                    } catch (error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                },
+                openAddModal() { this.isEditMode = false; this.currentProduct = { id: null, name: '', description: '', price: 0, stock: 0, category: '', image_url: '' }; this.showModal = true; },
+                openEditModal(product) { this.isEditMode = true; this.currentProduct = { ...product }; this.showModal = true; },
+                async handleDelete(productId) {
+                    if (!confirm('Apakah Anda yakin?')) return;
+                    const token = localStorage.getItem('jwtToken');
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/products/${productId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!response.ok) throw new Error((await response.json()).error || 'Gagal menghapus.');
+                        this.$emit('show-notification', { title: 'Sukses', message: 'Produk berhasil dihapus.' });
+                        this.fetchProducts();
+                    } catch (error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                },
+                async handleFormSubmit() {
+                    const token = localStorage.getItem('jwtToken');
+                    const method = this.isEditMode ? 'PUT' : 'POST';
+                    const url = this.isEditMode ? `${API_BASE_URL}/products/${this.currentProduct.id}` : `${API_BASE_URL}/products`;
+                    const payload = { ...this.currentProduct, price: parseFloat(this.currentProduct.price), stock: parseInt(this.currentProduct.stock) };
+                    delete payload.id;
+                    try {
+                        const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
+                        if (!response.ok) throw new Error((await response.json()).error || 'Operasi gagal.');
+                        this.$emit('show-notification', { title: 'Sukses', message: `Produk berhasil ${this.isEditMode ? 'diperbarui' : 'ditambahkan'}.` });
+                        this.showModal = false; this.fetchProducts();
+                    } catch (error) { this.$emit('show-notification', { title: 'Error', message: error.message, isSuccess: false }); }
+                }
+            },
+            created() { this.fetchProducts(); },
+            template: `
+                <div>
+                    <div class="mb-6 border-b border-gray-200"><nav class="-mb-px flex space-x-8" aria-label="Tabs"><button @click="activeTab = 'products'" :class="[activeTab === 'products' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm']">Kelola Produk</button><button @click="activeTab = 'reports'" :class="[activeTab === 'reports' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm']">Laporan Penjualan</button></nav></div>
+                    <div v-if="activeTab === 'products'"><div class="flex justify-between items-center mb-6"><h1 class="text-3xl font-bold">Kelola Produk</h1><button @click="openAddModal" class="bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600">Tambah Produk Baru</button></div><div class="bg-white shadow-md rounded-lg overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Produk</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Harga</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stok</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th></tr></thead><tbody class="bg-white divide-y divide-gray-200"><tr v-for="product in products" :key="product.id"><td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center"><div class="flex-shrink-0 h-10 w-10"><img class="h-10 w-10 rounded-full object-cover" :src="product.image_url" alt=""></div><div class="ml-4"><div class="text-sm font-medium text-gray-900">{{ product.name }}</div></div></div></td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ product.category }}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Rp {{ product.price.toLocaleString('id-ID') }}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ product.stock }}</td><td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button @click="openEditModal(product)" class="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button><button @click="handleDelete(product.id)" class="text-red-600 hover:text-red-900">Hapus</button></td></tr></tbody></table></div><div v-if="showModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-40"><div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg overflow-y-auto" style="max-height: 90vh;"><h2 class="text-2xl font-bold mb-4">{{ isEditMode ? 'Edit Produk' : 'Tambah Produk Baru' }}</h2><form @submit.prevent="handleFormSubmit"><div class="grid grid-cols-1 gap-6"><div><label class="block text-sm font-medium text-gray-700">Nama Produk</label><input v-model="currentProduct.name" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div><label class="block text-sm font-medium text-gray-700">Deskripsi</label><textarea v-model="currentProduct.description" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></textarea></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-gray-700">Harga</label><input v-model="currentProduct.price" type="number" step="0.01" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div><label class="block text-sm font-medium text-gray-700">Stok</label><input v-model="currentProduct.stock" type="number" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div></div><div><label class="block text-sm font-medium text-gray-700">Kategori</label><input v-model="currentProduct.category" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div><label class="block text-sm font-medium text-gray-700">URL Gambar</label><input v-model="currentProduct.image_url" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div></div><div class="mt-6 flex justify-end space-x-4"><button @click="showModal = false" type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300">Batal</button><button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">{{ isEditMode ? 'Simpan Perubahan' : 'Tambah Produk' }}</button></div></form></div></div></div>
+                    <div v-if="activeTab === 'reports'"><div v-if="isReportLoading" class="text-center py-10">Memuat laporan...</div><div v-else-if="report"><div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"><div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-sm font-medium text-gray-500">Total Pendapatan</h3><p class="mt-1 text-3xl font-semibold text-gray-900">Rp {{ report.totalRevenue.toLocaleString('id-ID') }}</p></div><div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-sm font-medium text-gray-500">Jumlah Pesanan Berhasil</h3><p class="mt-1 text-3xl font-semibold text-gray-900">{{ report.totalOrders }}</p></div><div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-sm font-medium text-gray-500">Nilai Pesanan Rata-rata</h3><p class="mt-1 text-3xl font-semibold text-gray-900">Rp {{ report.averageOrderValue.toLocaleString('id-ID', {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</p></div></div><h2 class="text-2xl font-bold mb-4">5 Produk Terlaris</h2><div class="bg-white shadow-md rounded-lg overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Produk</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Terjual</th></tr></thead><tbody class="bg-white divide-y divide-gray-200"><tr v-for="item in report.topSellingProducts" :key="item._id"><td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center"><div class="flex-shrink-0 h-10 w-10"><img class="h-10 w-10 rounded-full object-cover" :src="item.productDetails.image_url" alt=""></div><div class="ml-4"><div class="text-sm font-medium text-gray-900">{{ item.productDetails.name }}</div></div></div></td><td class="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900">{{ item.totalSold }}</td></tr></tbody></table></div></div></div>
+                </div>
+            `
+        };
+
+        // =======================================================
+        // Komponen Chatbot Widget
+        // =======================================================
+        const ChatbotWidget = {
+            data() { return { isOpen: false, isLoading: false, newMessage: '', messages: [{ sender: 'bot', text: 'Halo! Ada yang bisa saya bantu?' }] } },
+            methods: {
+                toggleChat() { this.isOpen = !this.isOpen; },
+                clearChat() { this.messages = [{ sender: 'bot', text: 'Halo! Ada yang bisa saya bantu seputar Toko Biru?' }]; },
+                async sendMessage() {
+                    if (!this.newMessage.trim()) return;
+                    const userMessage = { sender: 'user', text: this.newMessage };
+                    this.messages.push(userMessage);
+                    this.isLoading = true;
+                    const prompt = this.newMessage;
+                    this.newMessage = '';
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/chatbot/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Gagal menghubungi chatbot.');
+                        this.messages.push({ sender: 'bot', text: data.reply });
+                    } catch (error) {
+                        this.messages.push({ sender: 'bot', text: `Maaf, terjadi kesalahan: ${error.message}` });
+                    } finally {
+                        this.isLoading = false;
+                        this.$nextTick(() => { if (this.$refs.chatbox) this.$refs.chatbox.scrollTop = this.$refs.chatbox.scrollHeight; });
+                    }
+                }
+            },
+            template: `
+                <div class="fixed bottom-5 right-5 z-50"><div v-if="isOpen" class="w-80 h-96 bg-white rounded-lg shadow-2xl flex flex-col transition-all duration-300 mb-4"><div class="bg-blue-600 text-white p-3 rounded-t-lg flex justify-between items-center"><h3 class="font-semibold text-center flex-1">Toko Biru Assistant</h3><button @click="clearChat" title="Clear Chat" class="text-white hover:bg-blue-700 p-1 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div><div ref="chatbox" class="flex-1 p-4 overflow-y-auto"><div v-for="(msg, index) in messages" :key="index" class="mb-3"><div class="flex" :class="msg.sender === 'user' ? 'justify-end' : 'justify-start'"><div class="rounded-lg px-3 py-2 max-w-xs" :class="msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'"><p class="text-sm" v-html="msg.text.replace(/\\n/g, '<br>')"></p></div></div></div><div v-if="isLoading" class="flex justify-start"><div class="rounded-lg px-3 py-2 max-w-xs bg-gray-200 text-gray-800"><p class="text-sm animate-pulse">Mengetik...</p></div></div></div><div class="p-2 border-t"><form @submit.prevent="sendMessage" class="flex"><input v-model="newMessage" type="text" placeholder="Ketik pesan Anda..." class="flex-1 px-3 py-2 border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"><button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-r-md hover:bg-blue-700">&gt;</button></form></div></div><button @click="toggleChat" class="bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-110"><svg v-if="!isOpen" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg><svg v-else class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div>
+            `
+        };
+
+        // =======================================================
+        // Aplikasi Utama Vue
+        // =======================================================
+        const app = Vue.createApp({
+            data() {
+                return {
+                    currentPage: 'products-page',
+                    selectedProductId: null,
+                    selectedOrderId: null,
+                    isLoggedIn: false,
+                    userRole: '',
+                    mobileMenuOpen: false,
+                    notification: { visible: false, title: '', message: '', isSuccess: true }
+                }
+            },
+            components: {
+                NotificationModal, LoginPage, RegisterPage, ProductsPage, ProductDetailPage,
+                CartPage, AdminDashboard, ChatbotWidget,
+                OrderHistoryPage, OrderDetailPage, PaymentPage
+            },
+            computed: {
+                currentPageComponent() {
+                    switch(this.currentPage) {
+                        case 'login-page': return 'LoginPage';
+                        case 'register-page': return 'RegisterPage';
+                        case 'cart-page': return 'CartPage';
+                        case 'admin-dashboard': return 'AdminDashboard';
+                        case 'order-history-page': return 'OrderHistoryPage';
+                        case 'order-detail-page': return 'OrderDetailPage';
+                        case 'product-detail': return 'ProductDetailPage';
+                        case 'payment-page': return 'PaymentPage';
+                        default: return 'ProductsPage';
+                    }
+                }
+            },
+            methods: {
+                navigateTo(page) {
+                    this.currentPage = page;
+                    this.mobileMenuOpen = false;
+                },
+                viewProductDetail(productId) {
+                    this.selectedProductId = productId;
+                    this.navigateTo('product-detail');
+                },
+                viewOrderDetail(orderId) {
+                    this.selectedOrderId = orderId;
+                    this.navigateTo('order-detail-page');
+                },
+                showNotification({title, message, isSuccess = true}) {
+                    this.notification.title = title;
+                    this.notification.message = message;
+                    this.notification.isSuccess = isSuccess;
+                    this.notification.visible = true;
+                },
+                onLoginSuccess(data) {
+                    localStorage.setItem('jwtToken', data.token);
+                    localStorage.setItem('userRole', data.role);
+                    this.isLoggedIn = true;
+                    this.userRole = data.role;
+                    this.navigateTo('products-page');
+                    this.showNotification({title: 'Login Berhasil', message: 'Selamat datang kembali!'});
+                },
+                logout() {
+                    localStorage.removeItem('jwtToken');
+                    localStorage.removeItem('userRole');
+                    this.isLoggedIn = false;
+                    this.userRole = '';
+                    this.navigateTo('login-page');
+                    this.showNotification({title: 'Logout Berhasil', message: 'Anda telah berhasil keluar.'});
+                },
+                checkLoginStatus() {
+                    const token = localStorage.getItem('jwtToken');
+                    if (token) {
+                        this.isLoggedIn = true;
+                        this.userRole = localStorage.getItem('userRole');
+                        this.currentPage = 'products-page';
+                    } else {
+                         this.currentPage = 'login-page';
+                    }
+                }
+            },
+            created() {
+                this.checkLoginStatus();
+            }
+        });
+
+        app.mount('#app');
+
+    </script>
+</body>
+</html>

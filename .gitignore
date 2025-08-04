@@ -1,0 +1,25 @@
+# File-file konfigurasi yang berisi rahasia. JANGAN PERNAH DI-UPLOAD!
+.env
+.env.example
+
+# Folder dependensi Go.
+# Folder ini bisa dibuat ulang oleh siapa saja dengan perintah 'go mod vendor'.
+/vendor/
+
+# Folder data lokal dari volume Docker MongoDB.
+/mongo-data/
+
+# Hasil kompilasi (binary) dari Go.
+# File-file ini dibuat dari source code, jadi tidak perlu disimpan.
+main
+seeder
+*.exe
+
+# File-file spesifik sistem operasi yang tidak perlu.
+.DS_Store
+Thumbs.db
+
+# Folder cache dan virtual environment dari layanan Python (jika ada).
+/chatbot_service/__pycache__/
+/chatbot_service/.venv/
+/chatbot_service/venv/
